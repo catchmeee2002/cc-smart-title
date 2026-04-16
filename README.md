@@ -94,7 +94,7 @@ All settings are via environment variables (set in your shell profile):
 | `ANTHROPIC_API_KEY` | *(required)* | Your Anthropic API key |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | API endpoint |
 | `CC_TITLE_THROTTLE` | `3` | Trigger every N tool calls |
-| `CC_TITLE_MAX_BYTES` | `33` | Max title length in bytes (~11 Chinese chars) |
+| `CC_TITLE_MAX_BYTES` | `60` | Max title length in bytes (~20 Chinese chars) |
 | `CC_TITLE_MODEL` | `claude-haiku-4.5` | Model for title generation |
 | `CC_TITLE_PROMPT` | *(built-in Chinese)* | Custom prompt for title generation |
 

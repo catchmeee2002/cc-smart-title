@@ -22,10 +22,10 @@ trap cleanup EXIT ERR
 # ===================== Configurable Parameters =====================
 # How often to trigger (every N tool calls). Lower = more frequent renames.
 THROTTLE_EVERY="${CC_TITLE_THROTTLE:-3}"
-# Max bytes for generated title (UTF-8 Chinese chars are ~3 bytes each).
-MAX_TITLE_BYTES="${CC_TITLE_MAX_BYTES:-33}"
+# Max title length in bytes (UTF-8 Chinese ≈ 3 bytes/char, 60 bytes ≈ 20 chars).
+MAX_TITLE_BYTES="${CC_TITLE_MAX_BYTES:-60}"
 # Prompt template for title generation.
-TITLE_PROMPT="${CC_TITLE_PROMPT:-用10个中文字以内总结以下对话的主题，只输出标题，不加引号不加标点：}"
+TITLE_PROMPT="${CC_TITLE_PROMPT:-用15个中文字以内总结以下对话的主题，只输出标题，不加引号不加标点：}"
 # Haiku model to use.
 HAIKU_MODEL="${CC_TITLE_MODEL:-claude-haiku-4.5}"
 # API endpoint.
