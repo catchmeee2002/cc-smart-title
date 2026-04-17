@@ -22,7 +22,11 @@ trap cleanup EXIT ERR
 
 # ===================== Configurable Parameters =====================
 # How often to trigger (every N tool calls). Lower = more frequent renames.
-THROTTLE_EVERY="${CC_TITLE_THROTTLE:-3}"
+# Default 10: used as a late-stage refiner when paired with the
+# auto-title-on-first-prompt.sh UserPromptSubmit hook (which generates a title
+# instantly on the first user prompt). If you only deploy this file, lower it
+# (e.g. 3) so a title appears earlier in fresh sessions.
+THROTTLE_EVERY="${CC_TITLE_THROTTLE:-10}"
 # Max title length in bytes (UTF-8 Chinese ≈ 3 bytes/char, 60 bytes ≈ 20 chars).
 MAX_TITLE_BYTES="${CC_TITLE_MAX_BYTES:-60}"
 # System prompt for title generation (prevents model from responding to conversation content).

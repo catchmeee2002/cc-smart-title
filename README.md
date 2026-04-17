@@ -24,9 +24,11 @@
 
 ## Features
 
+- **Instant first-prompt title** — A dedicated `UserPromptSubmit` hook generates a title within seconds of the user's very first message, so `/resume` and the status bar are never blank
+- **Late-stage refiner** — A `PostToolUse` hook continues to refine the title as the conversation evolves (default: every 10 tool calls)
 - **Dual-write** — Titles appear in both `claude --resume` list and status bar
-- **Zero-blocking** — The hook exits instantly; all heavy work runs in background
-- **Smart throttling** — Only triggers every N tool calls (default: 3), not on every keystroke
+- **Zero-blocking** — Hooks exit instantly; all heavy work runs in background
+- **Smart pre-filtering** — Strips slash commands, mode-switch phrases, and `<system-reminder>` blocks from the first prompt before sending to the model
 - **Robust extraction** — Handles both string and array content types in transcripts
 - **Atomic writes** — Uses `flock` to safely update `sessions-index.json`
 - **Configurable** — Customize throttle rate, title length, prompt, and model via env vars
@@ -54,7 +56,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 bash install.sh
 ```
 
-That's it! Start a Claude Code session and the title will appear after ~3 tool calls.
+That's it! Start a Claude Code session — a title appears within seconds of your first message (via `UserPromptSubmit` hook), and is automatically refined as the conversation progresses (via `PostToolUse` hook, every 10 tool calls).
 
 ### Uninstall
 
@@ -64,30 +66,39 @@ bash uninstall.sh
 
 ## How It Works
 
+Two hooks work together as a two-layer system:
+
+| Layer | Hook type | When it fires | Purpose |
+|-------|-----------|---------------|---------|
+| L1 | `UserPromptSubmit` (`auto-title-on-first-prompt.sh`) | Once per session, on the first user prompt | Instant title so `/resume` is never blank |
+| L2 | `PostToolUse` (`auto-rename-session.sh`) | Every N tool calls (default 10) | Late-stage refinement based on the full conversation |
+
+Both hooks share the same zero-blocking design:
+
 ```
 ┌──────────────┐     stdin (JSON)     ┌─────────────────────┐
-│  Claude Code  │ ──────────────────▶ │  auto-rename-session │
-│  PostToolUse  │                     │       (hook)         │
-│    Hook       │                     │                      │
-└──────────────┘                     │  1. Read session_id   │
-                                      │  2. Throttle check    │
-                                      │  3. exit 0 (instant)  │
-                                      └──────────┬────────────┘
-                                                  │ fork &
-                                      ┌───────────▼───────────┐
-                                      │  Background Process    │
-                                      │                        │
-                                      │  4. Extract messages   │
-                                      │     (string + array)   │
-                                      │  5. curl Haiku API     │
-                                      │     → generate title   │
-                                      │  6. Dual-write:        │
-                                      │     → JSONL transcript │
-                                      │       (for /resume)    │
-                                      │     → sessions-index   │
-                                      │       (for status bar) │
-                                      └────────────────────────┘
+│  Claude Code │ ──────────────────▶  │   hook script       │
+│  Hook event  │                      │                     │
+└──────────────┘                      │  1. Read payload    │
+                                      │  2. Dedupe/throttle │
+                                      │  3. exit 0 (instant)│
+                                      └──────────┬──────────┘
+                                                 │ fork &
+                                      ┌──────────▼──────────┐
+                                      │  Background process │
+                                      │                     │
+                                      │  4. Filter / extract│
+                                      │  5. curl Haiku API  │
+                                      │     → generate title│
+                                      │  6. Dual-write:     │
+                                      │     → JSONL transcr.│
+                                      │       (for /resume) │
+                                      │     → sessions-index│
+                                      │       (for statusbr)│
+                                      └─────────────────────┘
 ```
+
+The later write wins, so the L2 refiner naturally overrides the L1 first-prompt title once the conversation has enough context.
 
 ## Configuration
 
@@ -97,11 +108,14 @@ All settings are via environment variables (set in your shell profile):
 |----------|---------|-------------|
 | `ANTHROPIC_API_KEY` | *(required)* | Your Anthropic API key |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | API endpoint |
-| `CC_TITLE_THROTTLE` | `3` | Trigger every N tool calls |
+| `CC_TITLE_THROTTLE` | `10` | (L2 hook) trigger every N tool calls for refinement |
 | `CC_TITLE_MAX_BYTES` | `60` | Max title length in bytes (~20 Chinese chars) |
-| `CC_TITLE_MODEL` | `claude-haiku-4.5` | Model for title generation |
-| `CC_TITLE_PROMPT` | *(built-in Chinese)* | Custom user prompt for title generation |
-| `CC_TITLE_SYSTEM` | *(built-in Chinese)* | System prompt to prevent model from responding to conversation content |
+| `CC_TITLE_MODEL` | `claude-haiku-4.5` | Model for title generation (shared by both hooks) |
+| `CC_TITLE_PROMPT` | *(built-in Chinese)* | (L2) user prompt for refinement |
+| `CC_TITLE_SYSTEM` | *(built-in Chinese)* | (L2) system prompt |
+| `CC_FIRST_TITLE_PROMPT` | *(built-in Chinese)* | (L1) user prompt for the first-prompt title |
+| `CC_FIRST_TITLE_SYSTEM` | *(built-in Chinese)* | (L1) system prompt |
+| `CC_FIRST_TITLE_PROMPT_CHARS` | `500` | (L1) truncate the first prompt to this many chars before sending |
 
 ## Optional: Status Line Integration
 
@@ -147,6 +161,7 @@ You can display the session title in your terminal status line. Add this snippet
 - **curl** — HTTP client for API calls
 - **jq** — JSON processor for parsing and updating
 - **flock** — File locking (part of `util-linux`, pre-installed on most Linux distros)
+- **perl** — Used by the first-prompt hook to strip multi-line `<system-reminder>` / `<command-name>` blocks from user input
 
 ## License
 
