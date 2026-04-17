@@ -24,8 +24,10 @@
 
 ## Features
 
+- **Dual-write** — Titles appear in both `claude --resume` list and status bar
 - **Zero-blocking** — The hook exits instantly; all heavy work runs in background
 - **Smart throttling** — Only triggers every N tool calls (default: 3), not on every keystroke
+- **Robust extraction** — Handles both string and array content types in transcripts
 - **Atomic writes** — Uses `flock` to safely update `sessions-index.json`
 - **Configurable** — Customize throttle rate, title length, prompt, and model via env vars
 - **Idempotent install** — Run `install.sh` multiple times without duplicating hooks
@@ -76,12 +78,14 @@ bash uninstall.sh
                                       │  Background Process    │
                                       │                        │
                                       │  4. Extract messages   │
-                                      │     from transcript    │
+                                      │     (string + array)   │
                                       │  5. curl Haiku API     │
                                       │     → generate title   │
-                                      │  6. flock + jq         │
-                                      │     → atomic write     │
-                                      │     sessions-index.json│
+                                      │  6. Dual-write:        │
+                                      │     → JSONL transcript │
+                                      │       (for /resume)    │
+                                      │     → sessions-index   │
+                                      │       (for status bar) │
                                       └────────────────────────┘
 ```
 
@@ -117,6 +121,11 @@ You can display the session title in your terminal status line. Add this snippet
 4. **Debug mode**: Uncomment the `LOG=` line in the script and check `/tmp/cc-rename-debug.log`
 5. **Wait for 3 tool calls**: Titles only generate after every 3rd tool call (configurable)
 
+### Title not showing in `/resume`?
+
+- The script appends a `custom-title` entry to the JSONL transcript file
+- Check if your Claude Code version supports `custom-title` entries (v2.1+)
+
 ### API errors?
 
 - If using a proxy or custom endpoint, set `ANTHROPIC_BASE_URL`
@@ -126,6 +135,11 @@ You can display the session title in your terminal status line. Add this snippet
 
 - The script uses `flock` for safe concurrent writes
 - Check if `~/.claude/projects/*/sessions-index.json` exists and is valid JSON
+- The script auto-creates `sessions-index.json` if the project directory exists
+
+### Title appears/disappears intermittently?
+
+- Fixed in v0.2.0: now uses `dirname "$TRANSCRIPT"` to locate project directory instead of slug calculation, eliminating path mismatch issues
 
 ## Dependencies
 

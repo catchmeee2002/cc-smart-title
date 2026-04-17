@@ -3,8 +3,9 @@
 # cc-smart-title: auto-rename-session.sh — PostToolUse hook
 #
 # Automatically generates a short Chinese title for each Claude Code
-# session using the Haiku model, and writes it to sessions-index.json
-# so `claude --resume` shows meaningful names.
+# session using the Haiku model, and dual-writes to:
+#   1. JSONL transcript file — appends custom-title entry for /resume
+#   2. sessions-index.json  — updates customTitle for status bar
 #
 # Design:
 #   - The hook itself only reads stdin + throttle check, exits immediately
@@ -56,13 +57,20 @@ CLAUDE_DIR="${HOME}/.claude"
   # --- Background: extract messages → curl haiku → write JSON ---
 
   # 3a. Extract recent user messages from transcript
+  # Supports both string and array content types in transcript entries.
+  # Array-type content (97%+ of messages) contains {type:"text", text:"..."} blocks.
   [[ ! -f "$TRANSCRIPT" ]] && exit 0
   MESSAGES="$(grep '"type":"user"' "$TRANSCRIPT" 2>/dev/null \
     | jq -r '
-        select(.isMeta != true)
+        select(.type == "user")
         | .message.content
-        | select(type == "string")
-        | select(startswith("<") | not)
+        | if type == "string" then .
+          elif type == "array" then
+            [.[] | select(.type == "text") | .text] | join("\n")
+          else empty
+        end
+        | select(. != null and . != "")
+        | select(test("^<(system-reminder|command-name|session-start-hook|local-command)") | not)
       ' 2>/dev/null \
     | grep -v '^\s*$' \
     | tail -n 5 \
@@ -91,24 +99,23 @@ CLAUDE_DIR="${HOME}/.claude"
   TITLE="$(echo "$TITLE" | sed 's/^["'"'"']*//;s/["'"'"']*$//;s/^[[:space:]]*//;s/[[:space:]]*$//')"
   [[ -z "$TITLE" ]] && exit 0
 
-  # 3c. Derive project slug → locate sessions-index.json
-  SLUG="$(echo "$CWD" | sed 's|^/||; s|/|-|g; s|\.|-|g; s|_|-|g; s|^|-|')"
-  INDEX_FILE="${CLAUDE_DIR}/projects/${SLUG}/sessions-index.json"
+  # 3c. Locate sessions-index.json via transcript path (avoids slug mismatch)
+  PROJECT_DIR="$(dirname "$TRANSCRIPT")"
+  INDEX_FILE="${PROJECT_DIR}/sessions-index.json"
+  # Fallback: search all project dirs for matching session
   if [[ ! -f "$INDEX_FILE" ]]; then
-    # Fallback: search all project dirs for matching session
     for DIR in "${CLAUDE_DIR}/projects/"*/; do
       CANDIDATE="${DIR}sessions-index.json"
       if [[ -f "$CANDIDATE" ]] && jq -e \
         --arg sid "$SESSION_ID" \
         '.entries[]? | select(.sessionId == $sid)' \
         "$CANDIDATE" >/dev/null 2>&1; then
-        INDEX_FILE="$CANDIDATE"; break
+        INDEX_FILE="$CANDIDATE"; PROJECT_DIR="$DIR"; break
       fi
     done
   fi
   # Auto-create sessions-index.json if project dir exists but file doesn't
   if [[ ! -f "$INDEX_FILE" ]]; then
-    PROJECT_DIR="${CLAUDE_DIR}/projects/${SLUG}"
     if [[ -d "$PROJECT_DIR" ]]; then
       echo '{"entries":[]}' > "${PROJECT_DIR}/sessions-index.json"
       INDEX_FILE="${PROJECT_DIR}/sessions-index.json"
@@ -117,7 +124,14 @@ CLAUDE_DIR="${HOME}/.claude"
     fi
   fi
 
-  # 3d. Atomic update customTitle with flock
+  # 3d. Append custom-title entry to JSONL transcript (for /resume list)
+  if [[ -f "$TRANSCRIPT" ]]; then
+    jq -nc --arg sid "$SESSION_ID" --arg title "$TITLE" \
+      '{"type":"custom-title","customTitle":$title,"sessionId":$sid}' \
+      >> "$TRANSCRIPT" 2>/dev/null || true
+  fi
+
+  # 3e. Atomic update customTitle in sessions-index.json (for status bar)
   LOCK_FILE="${INDEX_FILE}.lock"
   (
     flock -w 5 200 || exit 0
