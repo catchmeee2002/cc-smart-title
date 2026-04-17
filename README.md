@@ -25,13 +25,15 @@
 ## Features
 
 - **Instant first-prompt title** — A dedicated `UserPromptSubmit` hook generates a title within seconds of the user's very first message, so `/resume` and the status bar are never blank
-- **Late-stage refiner** — A `PostToolUse` hook continues to refine the title as the conversation evolves (default: every 10 tool calls)
+- **Main-thread distillation (v0.3+)** — The `PostToolUse` refiner maintains a cumulative summary (`summaries/<sid>.txt`) and derives the title from it. Titles stay anchored to the conversation's main thread instead of drifting with the latest topic
 - **Dual-write** — Titles appear in both `claude --resume` list and status bar
 - **Zero-blocking** — Hooks exit instantly; all heavy work runs in background
 - **Smart pre-filtering** — Strips slash commands, mode-switch phrases, and `<system-reminder>` blocks from the first prompt before sending to the model
 - **Robust extraction** — Handles both string and array content types in transcripts
-- **Atomic writes** — Uses `flock` to safely update `sessions-index.json`
-- **Configurable** — Customize throttle rate, title length, prompt, and model via env vars
+- **Graceful degradation** — Malformed JSON / empty fields / API errors leave the old summary and title untouched
+- **Atomic writes** — Uses `flock` to safely update `sessions-index.json`; `tmp + mv` for summary files
+- **Orphan GC** — Every 50 triggers, summary files with no matching transcript (and mtime > 7 days) are removed
+- **Configurable** — Customize throttle rate, title length, summary bytes, prompts, and model via env vars
 - **Idempotent install** — Run `install.sh` multiple times without duplicating hooks
 
 ## Quick Start
@@ -66,39 +68,48 @@ bash uninstall.sh
 
 ## How It Works
 
-Two hooks work together as a two-layer system:
+Two hooks work together as a two-layer system, with a shared on-disk cumulative summary for main-thread continuity:
 
 | Layer | Hook type | When it fires | Purpose |
 |-------|-----------|---------------|---------|
-| L1 | `UserPromptSubmit` (`auto-title-on-first-prompt.sh`) | Once per session, on the first user prompt | Instant title so `/resume` is never blank |
-| L2 | `PostToolUse` (`auto-rename-session.sh`) | Every N tool calls (default 10) | Late-stage refinement based on the full conversation |
+| L1 | `UserPromptSubmit` (`auto-title-on-first-prompt.sh`) | Once per session, on the first user prompt | Instant title + **seed** the initial summary with the cleaned first prompt |
+| L2 | `PostToolUse` (`auto-rename-session.sh`) | Every N tool calls (default 10) | **Distill** the main thread: feed {old_summary + new messages} to Haiku, get JSON `{summary, title}`, persist both |
 
-Both hooks share the same zero-blocking design:
+Per-session state lives in the Claude Code project directory:
 
 ```
-┌──────────────┐     stdin (JSON)     ┌─────────────────────┐
-│  Claude Code │ ──────────────────▶  │   hook script       │
-│  Hook event  │                      │                     │
-└──────────────┘                      │  1. Read payload    │
-                                      │  2. Dedupe/throttle │
-                                      │  3. exit 0 (instant)│
-                                      └──────────┬──────────┘
+~/.claude/projects/<slug>/
+  ├── <sid>.jsonl              # Claude Code native transcript
+  ├── sessions-index.json      # updated customTitle (status bar)
+  └── summaries/<sid>.txt      # cumulative main-thread summary (≤800 chars)
+```
+
+L2 flow (background subprocess, zero-blocking):
+
+```
+┌──────────────┐     stdin (JSON)     ┌──────────────────────┐
+│  Claude Code │ ──────────────────▶  │   hook script        │
+│  Hook event  │                      │  1. Read payload     │
+└──────────────┘                      │  2. Throttle + GC    │
+                                      │  3. exit 0 (instant) │
+                                      └──────────┬───────────┘
                                                  │ fork &
-                                      ┌──────────▼──────────┐
-                                      │  Background process │
-                                      │                     │
-                                      │  4. Filter / extract│
-                                      │  5. curl Haiku API  │
-                                      │     → generate title│
-                                      │  6. Dual-write:     │
-                                      │     → JSONL transcr.│
-                                      │       (for /resume) │
-                                      │     → sessions-index│
-                                      │       (for statusbr)│
-                                      └─────────────────────┘
+                                      ┌──────────▼───────────┐
+                                      │  Background process  │
+                                      │  a. Read old summary │
+                                      │  b. Extract recent   │
+                                      │     user messages    │
+                                      │  c. Haiku (JSON):    │
+                                      │     {summary, title} │
+                                      │  d. Atomic write     │
+                                      │     new summary      │
+                                      │  e. Dual-write title:│
+                                      │     → JSONL transcr. │
+                                      │     → sessions-index │
+                                      └──────────────────────┘
 ```
 
-The later write wins, so the L2 refiner naturally overrides the L1 first-prompt title once the conversation has enough context.
+If Haiku fails or returns malformed JSON, the old summary and title are preserved — the UI never flickers to an empty state.
 
 ## Configuration
 
@@ -108,11 +119,14 @@ All settings are via environment variables (set in your shell profile):
 |----------|---------|-------------|
 | `ANTHROPIC_API_KEY` | *(required)* | Your Anthropic API key |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | API endpoint |
-| `CC_TITLE_THROTTLE` | `10` | (L2 hook) trigger every N tool calls for refinement |
+| `CC_TITLE_THROTTLE` | `10` | (L2) trigger main-thread distillation every N tool calls |
 | `CC_TITLE_MAX_BYTES` | `60` | Max title length in bytes (~20 Chinese chars) |
 | `CC_TITLE_MODEL` | `claude-haiku-4.5` | Model for title generation (shared by both hooks) |
-| `CC_TITLE_PROMPT` | *(built-in Chinese)* | (L2) user prompt for refinement |
-| `CC_TITLE_SYSTEM` | *(built-in Chinese)* | (L2) system prompt |
+| `CC_SUMMARY_MAX_BYTES` | `800` | (L1+L2) max size of `summaries/<sid>.txt` |
+| `CC_SUMMARY_MAX_TOKENS` | `400` | (L2) `max_tokens` for the JSON `{summary, title}` call |
+| `CC_SUMMARY_SYSTEM` | *(built-in Chinese)* | (L2) system prompt for main-thread distillation |
+| `CC_SUMMARY_GC_EVERY` | `50` | (L2) run orphan summary GC every N triggers (set to `0` to disable GC entirely) |
+| `CC_SUMMARY_GC_DAYS` | `7` | (L2) GC deletes summaries whose `.jsonl` is missing and mtime is older than N days (uses `find -mtime +N`, i.e. ≥ N+1 full days ago) |
 | `CC_FIRST_TITLE_PROMPT` | *(built-in Chinese)* | (L1) user prompt for the first-prompt title |
 | `CC_FIRST_TITLE_SYSTEM` | *(built-in Chinese)* | (L1) system prompt |
 | `CC_FIRST_TITLE_PROMPT_CHARS` | `500` | (L1) truncate the first prompt to this many chars before sending |
