@@ -91,6 +91,20 @@ Multi-line bodies are welcome — use HEREDOC to preserve formatting.
 - GUI installers, package-manager distribution (keep it a single-clone-and-install-sh project)
 - Title history / undo (by design: later write wins, no versioning)
 
+## Downstream consumption pattern
+
+This repo is designed to be the **single source of truth** when consumed via symlink:
+
+```
+~/.claude/scripts/auto-rename-session.sh  ->  /path/to/cc-smart-title/auto-rename-session.sh
+~/.claude/scripts/auto-title-on-first-prompt.sh  ->  /path/to/cc-smart-title/auto-title-on-first-prompt.sh
+```
+
+When a downstream user wires it this way:
+- Editing here automatically flows downstream — no copy-paste, no diff drift
+- Their private project's `CLAUDE.md` should reference this repo upstream so future AI sessions on either side know about the link
+- Any change to the **ENV contract** (renaming/removing `CC_TITLE_*` vars) is a breaking change for downstream symlink users — bump it loudly in the commit message and `README.md`
+
 ---
 
 For the user-facing explanation, see [README.md](README.md).
