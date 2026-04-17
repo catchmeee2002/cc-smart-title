@@ -100,7 +100,8 @@ All settings are via environment variables (set in your shell profile):
 | `CC_TITLE_THROTTLE` | `3` | Trigger every N tool calls |
 | `CC_TITLE_MAX_BYTES` | `60` | Max title length in bytes (~20 Chinese chars) |
 | `CC_TITLE_MODEL` | `claude-haiku-4.5` | Model for title generation |
-| `CC_TITLE_PROMPT` | *(built-in Chinese)* | Custom prompt for title generation |
+| `CC_TITLE_PROMPT` | *(built-in Chinese)* | Custom user prompt for title generation |
+| `CC_TITLE_SYSTEM` | *(built-in Chinese)* | System prompt to prevent model from responding to conversation content |
 
 ## Optional: Status Line Integration
 
