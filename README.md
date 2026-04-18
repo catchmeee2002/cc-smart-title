@@ -26,7 +26,7 @@
 
 - **Instant first-prompt title** — A dedicated `UserPromptSubmit` hook generates a title within seconds of the user's very first message, so `/resume` and the status bar are never blank
 - **Main-thread distillation (v0.3+)** — The `PostToolUse` refiner maintains a cumulative summary (`summaries/<sid>.txt`) and derives the title from it. Titles stay anchored to the conversation's main thread instead of drifting with the latest topic
-- **Dual-write** — Titles appear in both `claude --resume` list and status bar
+- **Triple-write** — Titles appear in (1) `claude --resume` list via `custom-title`, (2) status bar via `sessions-index.json`, and (3) the native TUI top-right title via `agent-name` — the same entry type Claude Code writes when you run `/rename`. Note: `agent-name` is read on session load, so a running session won't see the new title until next `--resume`; see [Known limitations](#known-limitations)
 - **Zero-blocking** — Hooks exit instantly; all heavy work runs in background
 - **Smart pre-filtering** — Strips slash commands, mode-switch phrases, and `<system-reminder>` blocks from the first prompt before sending to the model
 - **Robust extraction** — Handles both string and array content types in transcripts
@@ -169,6 +169,10 @@ You can display the session title in your terminal status line. Add this snippet
 ### Title appears/disappears intermittently?
 
 - Fixed in v0.2.0: now uses `dirname "$TRANSCRIPT"` to locate project directory instead of slug calculation, eliminating path mismatch issues
+
+## Known limitations
+
+- **TUI top-right title is only refreshed on session load.** Claude Code reads `agent-name` JSONL entries when it starts up or does `claude --resume`, not while running. So for a **running session**, the top-right teal title will only appear (or update) after you quit and resume — not in real time. Workarounds we evaluated: POSIX signals (`SIGWINCH`/`SIGUSR1`/`SIGHUP`) require same-namespace process access and break across Docker/user-namespace boundaries, so they're not portable. If you need a mid-session refresh, run `/rename <new title>` manually. The `/resume` list and status-bar title do update promptly because they read from disk on demand.
 
 ## Dependencies
 

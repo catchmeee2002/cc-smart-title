@@ -196,9 +196,15 @@ CLAUDE_DIR="${HOME}/.claude"
   fi
 
   # 3e. Append custom-title entry to JSONL transcript (for /resume list)
+  #     Also append agent-name entry, which is what lights up the in-TUI
+  #     top-right title (the teal label that otherwise only appears after
+  #     running `/rename`). Both entries mirror what native `/rename` writes.
   if [[ -f "$TRANSCRIPT" ]]; then
     jq -nc --arg sid "$SESSION_ID" --arg title "$TITLE" \
       '{"type":"custom-title","customTitle":$title,"sessionId":$sid}' \
+      >> "$TRANSCRIPT" 2>/dev/null || true
+    jq -nc --arg sid "$SESSION_ID" --arg title "$TITLE" \
+      '{"type":"agent-name","agentName":$title,"sessionId":$sid}' \
       >> "$TRANSCRIPT" 2>/dev/null || true
   fi
 

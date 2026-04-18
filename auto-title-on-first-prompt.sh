@@ -118,9 +118,14 @@ CLEAN="$(echo "$CLEAN" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -c "$M
   fi
 
   # 4c. Append custom-title entry to JSONL transcript (for /resume list)
+  #     Also append agent-name entry, which is what lights up the in-TUI
+  #     top-right title on next session load (mirrors native `/rename`).
   if [[ -f "$TRANSCRIPT" ]]; then
     jq -nc --arg sid "$SESSION_ID" --arg title "$TITLE" \
       '{"type":"custom-title","customTitle":$title,"sessionId":$sid}' \
+      >> "$TRANSCRIPT" 2>/dev/null || true
+    jq -nc --arg sid "$SESSION_ID" --arg title "$TITLE" \
+      '{"type":"agent-name","agentName":$title,"sessionId":$sid}' \
       >> "$TRANSCRIPT" 2>/dev/null || true
   fi
 
