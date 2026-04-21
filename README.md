@@ -133,12 +133,33 @@ All settings are via environment variables (set in your shell profile):
 
 ## Optional: Status Line Integration
 
-You can display the session title in your terminal status line. Add this snippet to your Claude Code hooks:
+Display the AI-generated session title in Claude Code's status bar. The included `statusline-title.sh` adapts to terminal width automatically:
 
-```bash
-# In your StatusLine hook, read the customTitle from sessions-index.json
-# and display it alongside other status info.
+**Wide terminal (≥100 cols)** — single line:
 ```
+claude-opus-4.6 | my-project | 🆔390af008 | 📝Fix auth bug in login flow
+```
+
+**Narrow terminal (<100 cols)** — two lines:
+```
+claude-opus-4.6 | my-project | 🆔390af008
+📝Fix auth bug in login flow
+```
+
+### Setup
+
+Add the statusLine hook to `~/.claude/settings.json`:
+
+```jsonc
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash /path/to/cc-smart-title/statusline-title.sh"
+  }
+}
+```
+
+> **Tip**: If you already have a custom statusLine script, you can copy the session title lookup logic from `statusline-title.sh` into your own script — it's a self-contained `jq` read from `sessions-index.json`.
 
 ## Troubleshooting
 
