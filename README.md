@@ -169,10 +169,13 @@ You can display the session title in your terminal status line. Add this snippet
 ### Title appears/disappears intermittently?
 
 - Fixed in v0.2.0: now uses `dirname "$TRANSCRIPT"` to locate project directory instead of slug calculation, eliminating path mismatch issues
+- **Terminal width matters.** The status bar renders inside `<Text wrap="truncate">` (CC source `StatusLine.tsx:314`). When the terminal window is too narrow, multi-line status bar output (line 1: model/dir/git/context, line 2: copilot/session-id/title) gets truncated — the second line simply disappears. Widen your terminal window to see all status bar content
 
 ## Known limitations
 
 - **TUI top-right title is only refreshed on session load.** Claude Code reads `agent-name` JSONL entries when it starts up or does `claude --resume`, not while running. So for a **running session**, the top-right teal title will only appear (or update) after you quit and resume — not in real time. Workarounds we evaluated: POSIX signals (`SIGWINCH`/`SIGUSR1`/`SIGHUP`) require same-namespace process access and break across Docker/user-namespace boundaries, so they're not portable. If you need a mid-session refresh, run `/rename <new title>` manually. The `/resume` list and status-bar title do update promptly because they read from disk on demand.
+
+- **TUI header title and status-bar title may differ during a session.** Root cause (confirmed via CC source v2.1.79): The TUI header separator (`── title ──`, rendered by `REPL.tsx:1135`) reads from CC's **in-memory cache** `Project.currentSessionTitle` (via `getCurrentSessionTitle()` in `sessionStorage.ts:2739`). The status bar `📝` reads from `sessions-index.json` (via `context-bar.sh`). Since `auto-rename-session.sh` is an external hook process, it can write to JSONL and `sessions-index.json` (disk), but **cannot update CC's in-memory cache** — only internal functions like `saveCustomTitle()` can do that. The TUI header falls through its priority chain (`sessionTitle → agentTitle → haikuTitle → 'Claude Code'`) and ends up showing CC's built-in Haiku-generated title (from `generateSessionTitle()`) instead of the auto-rename title. This inconsistency resolves on next `--resume` when `restoreSessionMetadata()` loads `customTitle` from the JSONL tail into the in-memory cache.
 
 ## Dependencies
 
